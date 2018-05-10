@@ -1,0 +1,261 @@
+import Constant from '@/common/js/constant'
+import Api from '@/common/js/http/axiosApi'
+import util from '@/common/js/utils/util';
+import authUtil from '@/common/js/utils/authUtil';
+import { isNull, isUndefined } from 'util';
+
+const state = {
+	info: {
+		hdCode:''			//본사 코드
+		, brCode:''			//총판 코드
+		, stCode:''			//가맹점 코드
+		, multiType: ''		//멀티 타입
+		, multiStCode: ''	//멀티 가맹점 코드
+	},
+	view: {
+		// 가맹점선택 타입(ALL:전체 HD:본사 BR:총판 ST:가맹점(멀티가맹점제외))
+		type: 'ALL'
+		,hdYn:      false
+		,brYn:      false
+		,stYn:      false
+		,stMultiYn: false
+
+		,hdWidth: '170px'
+		,brWidth: '170px'
+		,stWidth: '170px'
+		,stMultiWidth: '170px'
+
+		,hdOption : {
+			allMsg : true
+		}
+	},
+	hdCodeList: {},     //본사 리스트
+	brCodeList: {},     //총판 리스트
+	stCodeList: {},     //가맹점 리스트
+	stMultiCodeList: {} //멀티가맹점 리스트
+
+}
+
+const getters = {
+	[Constant.GET_FIND_BRANCH_INFO]: state => state.info,
+	[Constant.GET_FIND_BARNCH_VIEW]: state => state.view,
+
+	[Constant.GET_HD_CODE_LIST]: state => state.hdCodeList,
+	[Constant.GET_BR_CODE_LIST]: state => state.brCodeList,
+	[Constant.GET_ST_CODE_LIST]: state => state.stCodeList,
+	[Constant.GET_ST_MULTI_CODE_LIST]: state => state.stMultiCodeList,
+}
+
+const mutations = {
+	[Constant.SET_FIND_BRANCH_INFO]: (state, payload) => state.info = payload,
+	[Constant.SET_FIND_BRANCH_VIEW]: (state, payload) => state.view = payload,
+	[Constant.SET_FIND_BRANCH_ST_MULTI_VIEW]: (state, payload) => state.view.stMultiYn = payload,
+	
+
+	[Constant.SEARCH_HD_CODE_LIST]: (state, payload) => state.hdCodeList = payload,
+	[Constant.SEARCH_BR_CODE_LIST]: (state, payload) => state.brCodeList = payload,
+	[Constant.SEARCH_ST_CODE_LIST]: (state, payload) => state.stCodeList = payload,
+	[Constant.SEARCH_ST_MULTI_CODE_LIST]: (state, payload) => state.stMultiCodeList = payload,
+}
+
+const actions = {
+
+	/** 선택값 초기화 */
+	[Constant.RESET_FIND_BRANCH_INFO]: ({commit}) => {
+		let info = {
+			hdCode:''
+		  , brCode:''
+		  , stCode:''
+		  , multiStCode: ''
+		  , multiType: ''
+		}
+		commit(Constant.SET_FIND_BRANCH_INFO, info)
+
+	},
+
+	/** 선택값 셋팅 */
+	[Constant.SET_FIND_BRANCH_INFO]: ({commit}, payload) => {
+		commit(Constant.SET_FIND_BRANCH_INFO, payload)
+	},
+
+	/** 타입 셋팅 */
+	[Constant.SET_FIND_BRANCH_TYPE]: (store, payload) => {
+		let userInfo = authUtil.getUserInfo();
+		let userTypeCd = userInfo.userTypeCd.substr(0, 1);
+		let view = {
+			type: payload.type
+			,hdYn:      false
+			,brYn:      false
+			,stYn:      false
+			,stMultiYn: false
+
+			, hdWidth: '170px'
+			, brWidth: '170px'
+			, stWidth: '170px'
+			, stMultiWidth: '170px'
+
+			,hdOption : {
+				allMsg : true
+			}
+		}
+		//hdOption 설정 값이 있을 경우 셋팅
+		if(!isUndefined(payload.hdOption)){
+			if(!isUndefined(payload.hdOption.allMsg)){
+				view.hdOption.allMsg = payload.hdOption.allMsg
+			}
+		}
+
+		switch(payload.type){
+			case 'ALL' :
+			view.hdYn = userTypeCd == '9' ? true : false;
+			view.brYn = userTypeCd == '9' || userTypeCd == '7' ? true : false;
+			view.stYn = userTypeCd != '3' ? true : false;
+			view.stMultiYn = store.state.info.multiType == 'M' || userInfo.multiType == 'M' ? true : false;
+			break;
+
+			case 'ST' :
+			view.stYn = true;
+			case 'BR' :
+			view.brYn = true;
+			case 'HD' :
+			view.hdYn = true;
+			break;
+		}
+		store.commit(Constant.SET_FIND_BRANCH_VIEW, view)
+	},
+
+	/** 멀티 타입 셋팅 */
+	[Constant.SET_FIND_BRANCH_ST_MULTI_VIEW]: (store, payload) => {
+		let userInfo = authUtil.getUserInfo();
+		let stMultiYn = store.state.info.multiType == 'M' || userInfo.multiType == 'M' ? true : false;
+		store.commit(Constant.SET_FIND_BRANCH_ST_MULTI_VIEW, stMultiYn)
+	},
+
+	/**
+	 * 타입별 공통 전문 전송및 응답처리
+	 * @tranType
+	 * Constant.SEARCH_HD_CODE_LIST - 본사 리스트 조회
+	 * Constant.SEARCH_BR_CODE_LIST - 총판 리스트 조회
+	 * Constant.SEARCH_ST_CODE_LIST - 가맹점 리스트 조회
+	 * Constant.SEARCH_ST_MULTI_CODE_LIST - 멀티 가맹점 리스트 조회
+	 */
+	[Constant.FIND_BRANCH]: async (store, payload) => {
+		//동기 방식으로 전문 전송
+		await store.dispatch(Constant.ASYNC_SEND_POST,payload.param)
+		//tranType 별로 응답 데이터 가져와서 리스트 셋팅
+		store.commit(payload.tranType, store.getters.getResData.out_ROW1)
+		//리스트 화면에서 검색시 참조할 선택 값 셋팅
+		store.commit(Constant.SET_FIND_BRANCH_INFO, payload.info)
+	},
+
+
+	/** 본사 리스트 조회 
+	 *  최초 로드시 본사리스트 셋팅하고 나머지 리스트 초기화 선택값 초기화
+	*/
+	[Constant.SEARCH_HD_CODE_LIST]: async (store, payload) => {
+
+		let param = new Object();
+		// 전문번호
+		param.REQ_NUM= "GR00_01_V01";
+		// 전문데이터
+		param.VALUE = "A│"  // 데이터_상태 (NULL: 전체, A: 삭제 외 전체, 0: 삭제, 1: 정상, 2: 정지, 9: 캐쉬부족)
+					+ "2│"; // 정렬_구분 (1: 코드순, 2: 이름순)
+		getParam(param);
+
+		//본사 리스트 조회
+
+		let tranType = Constant.SEARCH_HD_CODE_LIST;
+
+		//타입별 공통 전문 전송및 응답처리
+		//tranType - 요청 타입, param - 파라메터, info - 셀렉트 박스 선택값
+		await store.dispatch(Constant.FIND_BRANCH,{tranType, param, info:payload})
+
+		//본사 리스트 요청시 그외 리스트 초기화
+		store.commit(Constant.SEARCH_BR_CODE_LIST,[])
+		store.commit(Constant.SEARCH_ST_CODE_LIST,[])
+		store.commit(Constant.SEARCH_ST_MULTI_CODE_LIST,[])
+	},
+
+	 /** 총판 리스트 조회 */
+	 [Constant.SEARCH_BR_CODE_LIST]: async (store, payload) => {
+
+		let param = new Object();
+		// 전문번호
+		param.REQ_NUM= "GR00_02_V01";
+		// 전문데이터
+		param.VALUE = "A│"               // 데이터_상태 (NULL: 전체, A: 삭제 외 전체, 0: 삭제, 1: 정상, 2: 정지, 9: 캐쉬부족)
+					+ "2│"               // 정렬_구분 (1: 코드순, 2: 이름순)
+					+payload.hdCode+"│"; // 검색_제휴본사_코드
+		getParam(param);
+
+		//총판 리스트 조회
+		let tranType = Constant.SEARCH_BR_CODE_LIST;
+
+		//타입별 공통 전문 전송및 응답처리
+		//tranType - 요청 타입, param - 파라메터, info - 셀렉트 박스 선택값
+		await store.dispatch(Constant.FIND_BRANCH,{tranType,param,info:payload})
+
+		//총판 리스트 요청시 그외 리스트 초기화
+		store.commit(Constant.SEARCH_ST_CODE_LIST,[])
+		store.commit(Constant.SEARCH_ST_MULTI_CODE_LIST,[])
+	},
+
+	 /** 가맹점 리스트 조회 */
+	 [Constant.SEARCH_ST_CODE_LIST]: async (store, payload) => {
+
+		let param = new Object();
+		// 전문번호
+		param.REQ_NUM= "GR00_03_V01";
+		// 전문데이터
+		param.VALUE = "A│"              // 데이터_상태 (NULL: 전체, A: 삭제 외 전체, 0: 삭제, 1: 정상, 2: 정지, 9: 캐쉬부족)
+					+ "2│"              // 정렬_구분 (1: 코드순, 2: 이름순)
+					+payload.hdCode+"│" // 검색_제휴본사_코드
+					+payload.brCode+"│" // 검색_총판_코드
+					+"A│";              // 검색_멀티_구분 (NULL: 전체, N: 개별, M: 마스터, S: 종속, A: 개별/마스터) 
+		getParam(param);
+		
+
+		//가맹점 리스트 조회
+		let tranType = Constant.SEARCH_ST_CODE_LIST;
+		//타입별 공통 전문 전송및 응답처리
+		//tranType - 요청 타입, param - 파라메터, info - 셀렉트 박스 선택값
+		await store.dispatch(Constant.FIND_BRANCH,{tranType,param,info:payload})
+	   
+		//가맹점 리스트 요청시 그외 리스트 초기화
+		store.commit(Constant.SEARCH_ST_MULTI_CODE_LIST,[])
+	},
+
+	 /** 멀티가맹점 리스트 조회 */
+	 [Constant.SEARCH_ST_MULTI_CODE_LIST]: async (store, payload) => {
+
+		let param = new Object();
+		// 전문번호
+		param.REQ_NUM= "GR00_04_V01";
+		// 전문데이터
+		param.VALUE = "A│"               // 데이터_상태 (NULL: 전체, A: 삭제 외 전체, 0: 삭제, 1: 정상, 2: 정지, 9: 캐쉬부족)
+					+ "2│"               // 정렬_구분 (1: 코드순, 2: 이름순)
+					+payload.stCode+"│";  // 검색_가맹점_코드 (마스터 가맹점)
+		getParam(param);
+		//멀티가맹점 리스트 조회
+		let tranType = Constant.SEARCH_ST_MULTI_CODE_LIST;
+		//타입별 공통 전문 전송및 응답처리
+		//tranType - 요청 타입, param - 파라메터, info - 셀렉트 박스 선택값
+		await store.dispatch(Constant.FIND_BRANCH,{tranType,param,info:payload})
+	}
+
+}
+/**
+ * 전문 공통 셋팅
+ * @param {any} param
+ */
+const getParam = param => {
+	param.INFO = "";
+	param.REQ_TYPE = "200";
+}
+
+export default {
+	state,
+	getters,
+	mutations,
+	actions
+}

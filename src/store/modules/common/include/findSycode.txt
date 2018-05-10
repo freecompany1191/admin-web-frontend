@@ -1,0 +1,229 @@
+import Constant from '@/common/js/constant'
+import Api from '@/common/js/http/axiosApi'
+import util from '@/common/js/utils/util.js';
+import authUtil from '@/common/js/utils/authUtil';
+import httpUtil from '@/common/js/utils/httpUtil';
+import eventBus from '@/common/include/eventBus.js';
+
+/**
+ * 각 화면 data에 셋팅 해야되는 syCode Object를 셋팅하고
+ * created에서 Constant.SET_FIND_SY_CODE_LIST Action을 통해 codeList를 셋팅한다
+ * 필수 값인 syCode, type, select, data를 제외하고는 비워도 무방하다
+ * 
+ * codeList 예시 :
+ * data () {
+	return {
+		codeList: [
+		  {
+			SY_CODE: 'C1'
+			SY_NAME: '업무1'
+			, PARENT_SY_CODE: '' //분류_코드 (NULL: 전체)
+			, PARENT_DT_CODE: '' //상위_분류_코드 (NULL: 없음)
+			, DATA_STATUS: ''   //(NULL: 전체, 0: 삭제, 1: 정상, 2: 정지)
+			, LAST_SYNC_DATE: '' //마지막_동기화_일시 (NULL: 전체, YYYYMMDDHH24MISS (예: 20160518085059)
+			, TYPE:'checkbox'  //템플릿 타입 (checkbox, select, radio)
+			, SELECT:[]		   //선택정보
+			, DATA:[]		   //조회된 데이터
+		  }
+		, {SY_CODE: 'G2',SY_NAME: '업무2', TYPE:'checkbox', SELECT:[], DATA:[]}
+	  ]
+	}
+ * 
+ */
+const state = {
+	codeList: [], //VIEW 화면에 보여줄 SY_CODE 리스트
+	codeInfo: {}  //해당화면에 셋팅된 선택값만 순서대로 저장하는 오브젝트
+}
+
+const getters = {
+	[Constant.GET_FIND_SY_CODE_LIST]: state => state.codeList,
+	[Constant.GET_FIND_SY_CODE_INFO]: state => {
+		state.codeInfo
+	}
+}
+
+const mutations = {
+	[Constant.SET_FIND_SY_CODE_LIST]: (state, payload) => state.codeList = payload,
+}
+
+const actions = {
+
+	/**
+	 * CODE 리스트 초기화
+	 * @param {any} {commit} 
+	 */
+	[Constant.RESET_FIND_SY_CODE_LIST]: ({commit}) => commit(Constant.SET_FIND_SY_CODE_LIST, []),
+	
+	/**
+	 * CODE 리스트 셋팅
+	 * @param {any} {commit} 
+	 * @param {any} payload 
+	 */
+	[Constant.SET_FIND_SY_CODE_LIST]: ({commit},payload) => commit(Constant.SET_FIND_SY_CODE_LIST, payload),
+	
+	/**
+	 * 전문 전송및 응답처리
+	 * @param {any} store 
+	 * @param {any} payload 
+	 */
+	[Constant.FIND_SY_CODE]: (store, payload) => {
+		// let len = Object.keys(obj).length;
+		//동기 방식으로 전문 전송
+		// store.dispatch(Constant.ASYNC_SEND_POST, payload)
+		// store.commit(payload.tranType, store.getters.getResData.out_ROW1)
+		//리스트 화면에서 검색시 참조할 선택 값 셋팅
+		// store.commit(Constant.SET_FIND_BRANCH_INFO, payload.info)
+	},
+
+	/**
+	 * 시스템 코드 전문 생성 및 전문 전송 서비스 호출
+	 * @param {any} store 
+	 * @param {any} payload 
+	 */
+	[Constant.SEARCH_FIND_SY_CODE]: (store, payload) => {
+
+		let param = new Object();
+		// 전문번호
+		param.REQ_NUM= "GR00_05_V01";
+
+		let inValue = [];
+		inValue.push(payload.SY_CODE); //분류_코드 (NULL: 전체)
+		inValue.push(util.getNull(payload.PARENT_SY_CODE,'')); //상위_분류_코드 (NULL: 없음)
+		inValue.push(util.getNull(payload.PARENT_DT_CODE,'')); //상위_구분_코드 (NULL: 없음)
+		inValue.push(util.getNull(payload.DATA_STATUS,'1'));   //(NULL: 전체, 0: 삭제, 1: 정상, 2: 정지)
+		inValue.push(util.getNull(payload.LAST_SYNC_DATE,'')); //마지막_동기화_일시 (NULL: 전체, YYYYMMDDHH24MISS (예: 20160518085059)
+
+		// 전문데이터
+		param.VALUE = util.getValue(inValue); //전문데이터 조합 함수 호출
+		//공통 파라메터 처리
+		getParam(param);
+
+		//동기 방식으로 전문 전송
+		//await store.dispatch(Constant.ASYNC_SEND_POST, param)
+
+		//AXIOS API 호출
+		Api.SEND_POST(param).then((res) => {
+			let data = httpUtil.getResData(res)
+			if(data){
+				//현재 VUEX STORE에 셋팅된 CODE 리스트 가져오기
+				let codeList = store.getters.getFindSyCodeList;
+				let defaultSelect = '';
+				//조회된 SY_CODE 리스트를 VUEX STORE에 같은 SY_CODE로 Filter링 하여 DATA에 넣는다
+				codeList = codeList.filter( item => {
+					if(item.SY_CODE ==  payload.SY_CODE){
+						//시스템 코드명 가져오기
+						let getSyName = data.out_ROW1[0].SY_NAME;
+						//console.log(getSyName);
+						//시스템 코드명 변환
+						if(!util.isNull(getSyName)){
+							if(getSyName.includes('(')) getSyName = getSyName.split('(')[0]
+							getSyName = getSyName.replace('_코드','').replace('_','');
+						}
+						//시스템 코드명 자동셋팅
+						item.SY_NAME = util.getNull(item.SY_NAME, getSyName)
+						//조회된 시스템 코드 데이터 셋팅
+						item.DATA = data.out_ROW1
+
+						//TYPE이 select이면 전체 옵션 여부에 따라 초기 선택값을 셋팅한다
+						if(payload.TYPE == 'select'){
+							defaultSelect = setDefaultSelect(store, item.DATA, payload);
+							if(defaultSelect != 'NONE'){ //리턴값이 'NONE'이 아닐때만 초기 선택값을 셋팅한다
+								item.SELECTED = defaultSelect;
+								console.log('this.$EventBus : ',this.$EventBus);
+								this.$EventBus.$emit(eventBus.FIND_SYCODE_CALLBACK, {SY_CODE:payload.SY_CODE, SELECTED:item.SELECTED} );
+								//this.$EventBus.$emit(eventBus.APP_VUE_CALLBACK, {popup:true});
+							}
+
+								
+						}
+
+					}
+					return item;
+				})
+				
+				//VUEX STORE의 CODE 리스트에 변경된 사항 적용
+				store.commit(Constant.SET_FIND_SY_CODE_LIST, codeList);
+			}
+
+		})
+	},
+
+	/**
+	 * 시스템 코드 선택값 셋팅
+	 * @param {any} store 
+	 * @param {any} payload 
+	 */
+	[Constant.SET_FIND_SY_CODE_SELECTED]: (store, payload) => {
+		//현재 VUEX STORE에 셋팅된 CODE 리스트 가져오기
+		let codeList = store.getters.getFindSyCodeList;
+		//조회된 SY_CODE 리스트를 VUEX STORE에 같은 SY_CODE로 Filter링 하여 DATA에 넣는다
+		codeList = codeList.filter( item => {
+			if(item.SY_CODE ==  payload.SY_CODE){
+				item.SELECTED = payload.SELECTED
+			}
+			return item;
+		})
+		//VUEX STORE의 CODE 리스트에 변경된 사항 적용
+		store.commit(Constant.SET_FIND_SY_CODE_LIST, codeList);
+	}
+	
+}
+
+
+/**
+ * 전문 공통 셋팅
+ * @param {any} param
+ */
+const getParam = param => {
+	param.INFO = "";
+	param.REQ_TYPE = "200";
+}
+/**
+ * 최초 로딩시 TYPE이 select일때 전체 옵션 여부에 따라 첫번째 코드를 선택하는 함수
+ * 세션스토리지에 선택값이 있으면 'NONE'를 리턴하여 선택값 셋팅을 하지 않는다
+ * @param {any} store 
+ * @param {any} codeData 
+ * @param {any} payload 
+ * @returns 
+ */
+const setDefaultSelect = (store, codeData, payload) => {
+	
+	let empty = true;
+	let arraySelected = {};
+	//TYPE이 select이면 세션에 선택값이 있는지 체크한다
+	if(!util.isNull(store.getters.getSessionArraySelected)){
+		arraySelected = store.getters.getSessionArraySelected.find( item =>  item.SY_CODE ==  payload.SY_CODE).SELECTED;
+		if(!util.isNull(arraySelected))empty = false
+	}
+
+	//세션에 선택값이 없으면 기본값 셋팅을 한다
+	if(empty){
+		//기본 선택값이 있으면 우선으로 기본 선택값 선택
+		if(!util.isNull(payload.OPTION) && !util.isNull(payload.OPTION.DEFAULT_SELECTED)){
+			//코드 데이터가 있을때 설정된 기본값이 해당 코드 데이터에 있을때만 설정된 기본값으로 셋팅한다
+			if(codeData.length > 0){
+				let SY_DATA = codeData.find(item => item.DT_CODE == payload.OPTION.DEFAULT_SELECTED)
+				console.log('SY_DATA : ',SY_DATA);
+				if(SY_DATA) return SY_DATA.DT_CODE;
+			}
+		}
+		
+		//전체 선택 옵션이 있으면 전체 선택 기본값 처리
+		if(!util.isNull(payload.OPTION) && !util.isNull(payload.OPTION.ALL) && payload.OPTION.ALL == true)
+			return '';
+		else { //전체 선택 옵션이 없고 코드 리스트가 있으면 첫번째 코드 선택
+			if(codeData.length > 0)
+				return codeData[0].DT_CODE;
+		}
+
+	}
+	return 'NONE';
+	
+}
+
+export default {
+    state,
+    getters,
+    mutations,
+    actions
+}
