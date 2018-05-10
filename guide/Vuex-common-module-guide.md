@@ -33,7 +33,7 @@
 ------------------------------------------------------------------------------------------------------------------------------
 ## 데이터 조회`<httpTransfer.js>`
 일반적인 리스트 화면이나 데이터를 조회하는 화면에 사용 할 수 있다
-기본적인 공통 적용 사항은 [**VEUX 공통 컴포넌트 가이드**](guide/Vuex-common-component-guide.md)에 작성한 내용 중 [**공통사항**](guide/Vuex-common-component-guide.md#commonGuide)과 동일하므로 
+기본적인 공통 적용 사항은 [**VEUX 공통 컴포넌트 가이드**](Vuex-common-component-guide.md)에 작성한 내용 중 [**공통사항**](Vuex-common-component-guide.md#commonGuide)과 동일하므로 
 순수하게 데이터 조회 모듈에 대한 가이드만 작성한다
 
 ### 데이터 조회 모듈 적용 가이드
@@ -102,7 +102,7 @@ computed : {
 > `this.$store.dispatch(Constant.SEARCH_HTTP_DATA_PAGING, param)` 
 > 페이징 리스트 데이터를 조회를 위한 모듈은 위와 같이 파라메터를 작성하여 요청하여 조회가 완료되면
 > 즉시 `mapGetters`에서 **Vuex Store**에 변경된 데이터로 렌더링 해준다
-> 자세한 리스트 페이징 컴포넌트 적용법은 [**VEUX 공통 컴포넌트 가이드**](guide/Vuex-common-component-guide.md)의 [**리스트 페이징**](guide/Vuex-common-component-guide.md#listPaging)을 참조하기 바란다
+> 자세한 리스트 페이징 컴포넌트 적용법은 [**VEUX 공통 컴포넌트 가이드**](Vuex-common-component-guide.md)의 [**리스트 페이징**](Vuex-common-component-guide.md#listPaging)을 참조하기 바란다
 ```javascript
 methods: {
 	getDataList() {
